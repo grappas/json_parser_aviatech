@@ -21,63 +21,138 @@ typedef struct {
   float course;       // Course over ground
 } GPSData_t;
 
-typedef struct {
-  GPSData_t gpsData;
-  float temp;
-  float pressure;
-  float orientation;
-  bool thermal_true;
-  float ascending_speed;
-} parsedToStruct_t;
+void initializeGPSData(GPSData_t *data) {
+  strncpy(data->time, "null", sizeof(data->time));
+  strncpy(data->latitude, "null", sizeof(data->latitude));
+  data->lat_dir = ' ';
+  strncpy(data->longitude, "null", sizeof(data->longitude));
+  data->lon_dir = ' ';
+  strncpy(data->date, "null", sizeof(data->date));
+  data->speed = 0.0f;
+  data->course = 0.0f;
+}
 
-typedef union {
+// typedef struct {
+//   GPSData_t gpsData;
+//   float temp;
+//   float pressure;
+//   float orientation;
+//   bool thermal_true;
+//   float ascending_speed;
+// } parsedToStruct_t;
 
-  char toPass[sizeof(parsedToStruct_t) + 1];
-  parsedToStruct_t parsedToStruct;
+// typedef union {
+//
+//   char toPass[sizeof(parsedToStruct_t) + 1];
+//   parsedToStruct_t parsedToStruct;
+//
+// } togetherApesStrong_u;
 
-} togetherApesStrong_u;
+void parseGPRMC(const char *line, GPSData_t *data) {
+    char temp_speed[10];
+    char temp_course[10];
 
-void parseNMEA(char *nmea_sentence, GPSData_t *gps_data) {
-  // Example NMEA Sentence:
-  // "$GPRMC,hhmmss.sss,A,ddmm.mmmm,N,dddmm.mmmm,E,x.x,x.x,ddmmyy,,"
-  if (strncmp(nmea_sentence, "$GPRMC", 6) == 0) {
-    char *token;
-    int field_count = 0;
+    // Initialize temporary storage to empty strings
+    memset(temp_speed, 0, sizeof(temp_speed));
+    memset(temp_course, 0, sizeof(temp_course));
 
-    token = strtok(nmea_sentence, ",");
+    // Parse the line
+    sscanf(line, "$GPRMC,%10[^,],%*c,%9[^,],%c,%10[^,],%c,%9[^,],%9[^,],%6[^,]",
+           data->time,
+           data->latitude, &data->lat_dir,
+           data->longitude, &data->lon_dir,
+           temp_speed, temp_course, data->date);
 
-    while (token != NULL) {
-      switch (field_count) {
-      case 1: // Time
-        strncpy(gps_data->time, token, sizeof(gps_data->time));
-        break;
-      case 3: // Latitude
-        strncpy(gps_data->latitude, token, sizeof(gps_data->latitude));
-        break;
-      case 4: // N/S Indicator
-        gps_data->lat_dir = token[0];
-        break;
-      case 5: // Longitude
-        strncpy(gps_data->longitude, token, sizeof(gps_data->longitude));
-        break;
-      case 6: // E/W Indicator
-        gps_data->lon_dir = token[0];
-        break;
-      case 7: // Speed
-        gps_data->speed = atof(token);
-        break;
-      case 8: // Course
-        gps_data->course = atof(token);
-        break;
-      case 9: // Date
-        strncpy(gps_data->date, token, sizeof(gps_data->date));
-        break;
-      }
-
-      token = strtok(NULL, ",");
-      field_count++;
+    // Convert speed and course only if valid values were read
+    if (strlen(temp_speed) > 0) {
+        data->speed = atof(temp_speed);
+    } else {
+        data->speed = 0.0f;
     }
+    if (strlen(temp_course) > 0) {
+        data->course = atof(temp_course);
+    } else {
+        data->course = 0.0f;
+    }
+
+    // Handle empty fields by setting them to "null"
+    if (strlen(data->time) == 0) {
+        strncpy(data->time, "null", sizeof(data->time));
+    }
+    if (strlen(data->latitude) == 0) {
+        strncpy(data->latitude, "null", sizeof(data->latitude));
+    }
+    if (strlen(data->longitude) == 0) {
+        strncpy(data->longitude, "null", sizeof(data->longitude));
+    }
+    if (strlen(data->date) == 0) {
+        strncpy(data->date, "null", sizeof(data->date));
+    }
+}
+
+void parseLine(const char *line, GPSData_t *data) {
+    if (strncmp(line, "$GPRMC", 6) == 0) {
+        parseGPRMC(line, data);
+    }
+    // Add more parsers for other NMEA sentence types if needed
+}
+
+void clearString(char *str, size_t size) {
+  for (size_t i = 0; i < size; i++) {
+    str[i] = '\0';
   }
+}
+
+void parseCSVToGPSData(const char *csv_string, GPSData_t *data) {
+  char buffer[256];
+  strncpy(buffer, csv_string, sizeof(buffer));
+  buffer[sizeof(buffer) - 1] = '\0';
+
+  char *token;
+  int field_count = 0;
+
+  token = strtok(buffer, ",");
+  while (token != NULL) {
+    switch (field_count) {
+    case 0: // Time
+      strncpy(data->time, token, sizeof(data->time));
+      break;
+    case 1: // Latitude
+      strncpy(data->latitude, token, sizeof(data->latitude));
+      break;
+    case 2: // N/S Indicator
+      data->lat_dir = token[0];
+      break;
+    case 3: // Longitude
+      strncpy(data->longitude, token, sizeof(data->longitude));
+      break;
+    case 4: // E/W Indicator
+      data->lon_dir = token[0];
+      break;
+    case 5: // Date
+      strncpy(data->date, token, sizeof(data->date));
+      break;
+    case 6: // Speed
+      data->speed = atof(token);
+      break;
+    case 7: // Course
+      data->course = atof(token);
+      break;
+    }
+
+    token = strtok(NULL, ",");
+    field_count++;
+  }
+}
+
+void GPSDataToJson(const GPSData_t *data, char *json_output,
+                   size_t json_output_size) {
+  snprintf(json_output, json_output_size,
+           "{ \"time\": \"%s\", \"latitude\": \"%s\", \"lat_dir\": \"%c\", "
+           "\"longitude\": \"%s\", \"lon_dir\": \"%c\", \"date\": \"%s\", "
+           "\"speed\": %.1f, \"course\": %.1f }",
+           data->time, data->latitude, data->lat_dir, data->longitude,
+           data->lon_dir, data->date, data->speed, data->course);
 }
 
 int main() {
@@ -94,8 +169,6 @@ int main() {
     return -1;
   }
 
-  togetherApesStrong_u dataCache;
-
   // Set serial port options
   tcgetattr(fd, &options);
   cfsetispeed(&options, B9600); // Set baud rate to 9600
@@ -108,59 +181,49 @@ int main() {
   // printf("%s", print_json(&dataCache));
 
   char jsonFile[64096];
+  char buffer[256];
+  GPSData_t GPSData;
 
   // Read data
   while (1) {
-    int bytes_read = read(fd, dataCache.toPass, sizeof(parsedToStruct_t));
+    clearString(buffer, sizeof(buffer));
+    clearString(jsonFile, sizeof(jsonFile));
+    int bytes_read = read(fd, buffer, sizeof(buffer));
     if (bytes_read > 0) {
-      dataCache.toPass[sizeof(parsedToStruct_t)] = '\0'; // Null terminate the string
-      printf("Received: %s\n", dataCache.toPass);
+      buffer[sizeof(buffer) - 1] = '\0'; // Null terminate the string
+      printf("Received: %s\n", buffer);
+      initializeGPSData(&GPSData);
 
-      if (dataCache.parsedToStruct.gpsData.time[0])
-        dataCache.parsedToStruct.gpsData.time[0] = '0';
-      if (dataCache.parsedToStruct.gpsData.latitude[0])
-        dataCache.parsedToStruct.gpsData.latitude[0] = '0';
-      if (dataCache.parsedToStruct.gpsData.lat_dir)
-        dataCache.parsedToStruct.gpsData.lat_dir = '0';
-      if (dataCache.parsedToStruct.gpsData.longitude[0])
-        dataCache.parsedToStruct.gpsData.longitude[0] = '0';
-      if (dataCache.parsedToStruct.gpsData.lon_dir)
-        dataCache.parsedToStruct.gpsData.lon_dir = '0';
-      if (dataCache.parsedToStruct.gpsData.date[0])
-        dataCache.parsedToStruct.gpsData.date[0] = '0';
+      // if (dataCache.parsedToStruct.gpsData.time[0])
+      //   dataCache.parsedToStruct.gpsData.time[0] = '0';
+      // if (dataCache.parsedToStruct.gpsData.latitude[0])
+      //   dataCache.parsedToStruct.gpsData.latitude[0] = '0';
+      // if (dataCache.parsedToStruct.gpsData.lat_dir)
+      //   dataCache.parsedToStruct.gpsData.lat_dir = '0';
+      // if (dataCache.parsedToStruct.gpsData.longitude[0])
+      //   dataCache.parsedToStruct.gpsData.longitude[0] = '0';
+      // if (dataCache.parsedToStruct.gpsData.lon_dir)
+      //   dataCache.parsedToStruct.gpsData.lon_dir = '0';
+      // if (dataCache.parsedToStruct.gpsData.date[0])
+      //   dataCache.parsedToStruct.gpsData.date[0] = '0';
 
-      char jsonFile[64096];
+      // parseCSVToStruct(buffer, &dataCache.parsedToStruct);
+      parseGPRMC(buffer, &GPSData);
 
-      sprintf(jsonFile,
-              "{\n"
-              " \"time\": \"%s\",\n"
-              " \"latitude\": \"%s\",\n"
-              " \"lat_dir\": \"%c\",\n"
-              " \"longtitude\": \"%s\",\n"
-              " \"lon_dir\": \"%c\",\n"
-              " \"date\": \"%s\",\n"
-              " \"speed\": %f,\n"
-              " \"course\": %f,\n"
-              " \"temp\": %f,\n"
-              " \"pressure\": %f,\n"
-              " \"orientation\": %f,\n"
-              " \"thermal_true\": \"%d\",\n"
-              " \"ascending_speed\": %f,\n"
-              "}",
-              dataCache.parsedToStruct.gpsData.time,
-              dataCache.parsedToStruct.gpsData.latitude,
-              dataCache.parsedToStruct.gpsData.lat_dir,
-              dataCache.parsedToStruct.gpsData.longitude,
-              dataCache.parsedToStruct.gpsData.lon_dir,
-              dataCache.parsedToStruct.gpsData.date,
-              dataCache.parsedToStruct.gpsData.speed,
-              dataCache.parsedToStruct.gpsData.course,
-              dataCache.parsedToStruct.temp, dataCache.parsedToStruct.pressure,
-              dataCache.parsedToStruct.orientation,
-              (int)(dataCache.parsedToStruct.thermal_true),
-              dataCache.parsedToStruct.ascending_speed);
+      // parsedToJson(&dataCache.parsedToStruct, jsonFile, sizeof(jsonFile));
+      GPSDataToJson(&GPSData, jsonFile, sizeof(jsonFile));
 
       printf("%s\n", jsonFile);
+
+      FILE *file = fopen("data.json", "w");
+      if (file == NULL) {
+        perror("Error opening file");
+        return 1;
+      }
+      fprintf(file, "%s\n", jsonFile);
+      fclose(file);
+
+      system("cat data.json > ../aviatech-hackathon-2/data.json");
 
       // char time[11];      // HHMMSS.SS
       // char latitude[10];  // DDMM.MMMM
