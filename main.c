@@ -154,7 +154,7 @@ void parseCSVToGPSData(const char *csv_string, GPSData_t *data) {
   }
 }
 
-void parseSentence(const char *sentence, GPSData_t *gpsData) {
+bool parseSentence(const char *sentence, GPSData_t *gpsData) {
   char type[7];
   char trash[256];
   sscanf(sentence, "%6s", type);
@@ -179,14 +179,31 @@ void parseSentence(const char *sentence, GPSData_t *gpsData) {
   } else if (strcmp(type, "$GPGGA") == 0) {
     sscanf(
         sentence,
-        "$GPGGA, %[^,], %[^,], %[^,], %[^,], %[^,], %[^,], %f, %f, %f, %lf*%*s",
+      // $GPGGA, 123519, 4807.038, N, 01131.000, E, 1, 08, 0.9, 545.4, M, 46.9, M, , *47
+      // 123519	Current time in UTC – 12:35:19
+      // 4807.038,
+      // N	Latitude 48 deg 07.038′ N
+      // 01131.000,
+      // E	Longitude 11 deg 31.000′ E
+      // 1	GPS fix
+      // 08	Number of satellites being tracked
+      // 0.9	Horizontal dilution of position
+      // 545.4,
+      // M	Altitude in Meters (above mean sea level)
+      // 46.9,
+      // M	Height of geoid (mean sea level)
+      // (empty field)	Time in seconds since last DGPS update
+      // (empty field)	DGPS station ID number
+      // *47	The checksum data, always begins with *
+        "$GPGGA,%[^,],%[^,],%[^,],%[^,],%[^,],%[^,],%[^,],%[^,],%[^,],%lf*%*s",
         gpsData->time, gpsData->latitude, &gpsData->lat_dir, gpsData->longitude,
-        &gpsData->lon_dir, gpsData->timestamp, &gpsData->speed,
-        &gpsData->speed_vertical, &gpsData->altitude);
+        &gpsData->lon_dir, gpsData->timestamp, trash, trash, trash, &gpsData->altitude
+        );
   }
   else{
-    return;
+    return true;
   }
+  return false;
 }
 
 // void GPSDataToJson(const GPSData_t *data, char *json_output,
@@ -270,8 +287,9 @@ int main() {
       //   dataCache.parsedToStruct.gpsData.date[0] = '0';
 
       // parseCSVToStruct(buffer, &dataCache.parsedToStruct);
-      parseGPRMC(buffer, &GPSData);
-
+      if(parseSentence(buffer, &GPSData) == true){
+        continue;
+      }
       // parsedToJson(&dataCache.parsedToStruct, jsonFile, sizeof(jsonFile));
       GPSDataToJson(&GPSData, jsonFile, sizeof(jsonFile));
 
