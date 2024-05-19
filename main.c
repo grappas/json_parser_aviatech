@@ -10,17 +10,23 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
+
+double height_cache = 0;
+
+time_t start, end;
 
 typedef struct {
-  char time[11];      // HHMMSS.SS
-  char latitude[10];  // DDMM.MMMM
-  char lat_dir;       // N or S
-  char longitude[11]; // DDDMM.MMMM
-  char lon_dir;       // E or W
-  char date[7];       // DDMMYY
-  float speed;        // Speed in knots
-  float course;       // Course over ground
-  double height;
+  char time[11];        // HHMMSS.SS
+  char latitude[10];    // DDMM.MMMM
+  char lat_dir;         // N or S
+  char longitude[11];   // DDDMM.MMMM
+  char lon_dir;         // E or W
+  char date[7];         // DDMMYY
+  float speed;          // Speed in knots
+  float speed_vertical; // Speed in knots
+  float course;         // Course over ground
+  double altitude;
 } GPSData_t;
 
 void initializeGPSData(GPSData_t *data) {
@@ -104,48 +110,72 @@ void clearString(char *str, size_t size) {
 }
 
 void parseCSVToGPSData(const char *csv_string, GPSData_t *data) {
-    char buffer[256];
-    strncpy(buffer, csv_string, sizeof(buffer));
-    buffer[sizeof(buffer) - 1] = '\0';
+  char buffer[256];
+  strncpy(buffer, csv_string, sizeof(buffer));
+  buffer[sizeof(buffer) - 1] = '\0';
 
-    char *token;
-    int field_count = 0;
+  char *token;
+  int field_count = 0;
 
-    token = strtok(buffer, ",");
-    while (token != NULL) {
-        switch (field_count) {
-            case 0: // Time
-                strncpy(data->time, token, sizeof(data->time));
-                break;
-            case 1: // Latitude
-                strncpy(data->latitude, token, sizeof(data->latitude));
-                break;
-            case 2: // N/S Indicator
-                data->lat_dir = token[0];
-                break;
-            case 3: // Longitude
-                strncpy(data->longitude, token, sizeof(data->longitude));
-                break;
-            case 4: // E/W Indicator
-                data->lon_dir = token[0];
-                break;
-            case 5: // Date
-                strncpy(data->date, token, sizeof(data->date));
-                break;
-            case 6: // Speed
-                data->speed = atof(token);
-                break;
-            case 7: // Course
-                data->course = atof(token);
-                break;
-            case 8: // Height
-                data->height = atof(token);
-                break;
-        }
-
-        token = strtok(NULL, ",");
-        field_count++;
+  token = strtok(buffer, ",");
+  while (token != NULL) {
+    switch (field_count) {
+    case 0: // Time
+      strncpy(data->time, token, sizeof(data->time));
+      break;
+    case 1: // Latitude
+      strncpy(data->latitude, token, sizeof(data->latitude));
+      break;
+    case 2: // N/S Indicator
+      data->lat_dir = token[0];
+      break;
+    case 3: // Longitude
+      strncpy(data->longitude, token, sizeof(data->longitude));
+      break;
+    case 4: // E/W Indicator
+      data->lon_dir = token[0];
+      break;
+    case 5: // Date
+      strncpy(data->date, token, sizeof(data->date));
+      break;
+    case 6: // Speed
+      data->speed = atof(token);
+      break;
+    case 7: // Course
+      data->course = atof(token);
+      break;
+    case 8: // Height
+      data->altitude = atof(token);
+      break;
     }
+
+    token = strtok(NULL, ",");
+    field_count++;
+  }
+}
+
+void parseSentence(const char *sentence, GPSData_t *gpsData) {
+  char type[7];
+  int trash[256];
+  sscanf(sentence, "%6s", type);
+  if (strcmp(type, "$GPRMC") == 0) {
+    sscanf(sentence,
+           "$GPRMC,%[^,],%[^,],%[^,],%[^,],%[^,],%[^,],%f,%f,%[^,], "
+           "%f,%[^*]*%*s",
+           gpsData->time, gpsData->latitude, &gpsData->lat_dir,
+           gpsData->longitude, &gpsData->lon_dir, gpsData->date,
+           &gpsData->speed, &gpsData->course, gpsData->altitude);
+  } else if (strcmp(type, "$GPGGA") == 0) {
+    sscanf(
+        sentence,
+        "$GPGGA, %[^,], %[^,], %[^,], %[^,], %[^,], %[^,], %f, %f, %f, %lf*%*s",
+        gpsData->time, gpsData->latitude, &gpsData->lat_dir, gpsData->longitude,
+        &gpsData->lon_dir, gpsData->date, &gpsData->speed,
+        &gpsData->speed_vertical, &gpsData->altitude);
+  }
+  else{
+    return;
+  }
 }
 
 // void GPSDataToJson(const GPSData_t *data, char *json_output,
@@ -161,24 +191,20 @@ void parseCSVToGPSData(const char *csv_string, GPSData_t *data) {
 //            data->lon_dir, data->date, data->speed, data->course, state);
 // }
 
-void GPSDataToJson(const GPSData_t *data, char *json_output, size_t json_output_size) {
+void GPSDataToJson(const GPSData_t *data, char *json_output,
+                   size_t json_output_size) {
   gpioInitialise();
   gpioSetMode(GPIO_PIN, PI_INPUT);
   int state = gpioRead(GPIO_PIN);
-    snprintf(json_output, json_output_size,
-             "{ \"time\": \"%s\", \"latitude\": \"%s\", \"lat_dir\": \"%c\", \"longitude\": \"%s\", \"lon_dir\": \"%c\", \"date\": \"%s\", \"speed\": %.1f, \"course\": %.1f, \"height\": %.1f, \"thermal_state\": %d }",
-             data->time,
-             data->latitude,
-             data->lat_dir,
-             data->longitude,
-             data->lon_dir,
-             data->date,
-             data->speed,
-             data->course,
-             data->height,
-             state);
+  snprintf(json_output, json_output_size,
+           "{ \"time\": \"%s\", \"latitude\": \"%s\", \"lat_dir\": \"%c\", "
+           "\"longitude\": \"%s\", \"lon_dir\": \"%c\", \"date\": \"%s\", "
+           "\"speed\": %.1f, \"speed_vertical\": %.1f, \"course\": %.1f, "
+           "\"height\": %.1f, \"thermal_state\": %d }",
+           data->time, data->latitude, data->lat_dir, data->longitude,
+           data->lon_dir, data->date, data->speed, data->speed_vertical,
+           data->course, data->altitude, state);
 }
-
 
 int main() {
   int fd;
