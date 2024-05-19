@@ -22,7 +22,7 @@ typedef struct {
   char lat_dir;         // N or S
   char longitude[11];   // DDDMM.MMMM
   char lon_dir;         // E or W
-  char date[7];         // DDMMYY
+  char timestamp[7];         // DDMMYY
   float speed;          // Speed in knots
   float speed_vertical; // Speed in knots
   float course;         // Course over ground
@@ -35,7 +35,7 @@ void initializeGPSData(GPSData_t *data) {
   data->lat_dir = ' ';
   strncpy(data->longitude, "null", sizeof(data->longitude));
   data->lon_dir = ' ';
-  strncpy(data->date, "null", sizeof(data->date));
+  strncpy(data->timestamp, "null", sizeof(data->timestamp));
   data->speed = 0.0f;
   data->course = 0.0f;
 }
@@ -67,7 +67,7 @@ void parseGPRMC(const char *line, GPSData_t *data) {
   // Parse the line
   sscanf(line, "$GPRMC,%10[^,],%*c,%9[^,],%c,%10[^,],%c,%9[^,],%9[^,],%6[^,]",
          data->time, data->latitude, &data->lat_dir, data->longitude,
-         &data->lon_dir, temp_speed, temp_course, data->date);
+         &data->lon_dir, temp_speed, temp_course, data->timestamp);
 
   // Convert speed and course only if valid values were read
   if (strlen(temp_speed) > 0) {
@@ -91,8 +91,8 @@ void parseGPRMC(const char *line, GPSData_t *data) {
   if (strlen(data->longitude) == 0) {
     strncpy(data->longitude, "null", sizeof(data->longitude));
   }
-  if (strlen(data->date) == 0) {
-    strncpy(data->date, "null", sizeof(data->date));
+  if (strlen(data->timestamp) == 0) {
+    strncpy(data->timestamp, "null", sizeof(data->timestamp));
   }
 }
 
@@ -136,7 +136,7 @@ void parseCSVToGPSData(const char *csv_string, GPSData_t *data) {
       data->lon_dir = token[0];
       break;
     case 5: // Date
-      strncpy(data->date, token, sizeof(data->date));
+      strncpy(data->timestamp, token, sizeof(data->timestamp));
       break;
     case 6: // Speed
       data->speed = atof(token);
@@ -156,21 +156,32 @@ void parseCSVToGPSData(const char *csv_string, GPSData_t *data) {
 
 void parseSentence(const char *sentence, GPSData_t *gpsData) {
   char type[7];
-  int trash[256];
+  char trash[256];
   sscanf(sentence, "%6s", type);
   if (strcmp(type, "$GPRMC") == 0) {
     sscanf(sentence,
-           "$GPRMC,%[^,],%[^,],%[^,],%[^,],%[^,],%[^,],%f,%f,%[^,], "
-           "%f,%[^*]*%*s",
-           gpsData->time, gpsData->latitude, &gpsData->lat_dir,
-           gpsData->longitude, &gpsData->lon_dir, gpsData->date,
-           &gpsData->speed, &gpsData->course, gpsData->altitude);
+           // $GPRMC, 123519, A, 4807$	Every NMEA sentence starts with $ character.
+           // GPRMC	Global Positioning Recommended Minimum Coordinates
+           // 123519	Current time in UTC – 12:35:19
+           // A	Status A=active or V=Void.
+           // 4807.038,N	Latitude 48 deg 07.038′ N
+           // 01131.000,E	Longitude 11 deg 31.000′ E
+           // 022.4	Speed over the ground in knots
+           // 084.4	Track angle in degrees True
+           // 220318	Current Date – 22rd of March 2018
+           // 003.1,W	Magnetic Variation
+           // *6A	The checksum data, always begins with *.038, N, 01131.000, E,022.4, 084.4, 230394, 003.1, W*6A
+           "$GPRMC,%[^,],%[^,],%[^,],%[^,],%[^,],%[^,],%f,%[^,],%[^,],"
+           "%[^*],%[^*]*%*s",
+           gpsData->time, trash, gpsData->latitude, &gpsData->lat_dir,
+           gpsData->longitude, &gpsData->lon_dir, &gpsData->speed,
+           trash, gpsData->timestamp,trash,trash);
   } else if (strcmp(type, "$GPGGA") == 0) {
     sscanf(
         sentence,
         "$GPGGA, %[^,], %[^,], %[^,], %[^,], %[^,], %[^,], %f, %f, %f, %lf*%*s",
         gpsData->time, gpsData->latitude, &gpsData->lat_dir, gpsData->longitude,
-        &gpsData->lon_dir, gpsData->date, &gpsData->speed,
+        &gpsData->lon_dir, gpsData->timestamp, &gpsData->speed,
         &gpsData->speed_vertical, &gpsData->altitude);
   }
   else{
@@ -202,7 +213,7 @@ void GPSDataToJson(const GPSData_t *data, char *json_output,
            "\"speed\": %.1f, \"speed_vertical\": %.1f, \"course\": %.1f, "
            "\"height\": %.1f, \"thermal_state\": %d }",
            data->time, data->latitude, data->lat_dir, data->longitude,
-           data->lon_dir, data->date, data->speed, data->speed_vertical,
+           data->lon_dir, data->timestamp, data->speed, data->speed_vertical,
            data->course, data->altitude, state);
 }
 
