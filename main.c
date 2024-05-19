@@ -40,22 +40,6 @@ void initializeGPSData(GPSData_t *data) {
   data->course = 0.0f;
 }
 
-// typedef struct {
-//   GPSData_t gpsData;
-//   float temp;
-//   float pressure;
-//   float orientation;
-//   bool thermal_true;
-//   float ascending_speed;
-// } parsedToStruct_t;
-
-// typedef union {
-//
-//   char toPass[sizeof(parsedToStruct_t) + 1];
-//   parsedToStruct_t parsedToStruct;
-//
-// } togetherApesStrong_u;
-
 void clearString(char *str, size_t size) {
   for (size_t i = 0; i < size; i++) {
     str[i] = '\0';
