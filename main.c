@@ -1,10 +1,11 @@
 #include <cjson/cJSON.h>
 #include <fcntl.h>
+#include <pigpio.h>
 #include <stdbool.h>
-#include <stdint.h>
 #include <stdio.h>
 #include <termios.h>
 #include <unistd.h>
+#define GPIO_PIN 23
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -19,6 +20,7 @@ typedef struct {
   char date[7];       // DDMMYY
   float speed;        // Speed in knots
   float course;       // Course over ground
+  double height;
 } GPSData_t;
 
 void initializeGPSData(GPSData_t *data) {
@@ -49,52 +51,50 @@ void initializeGPSData(GPSData_t *data) {
 // } togetherApesStrong_u;
 
 void parseGPRMC(const char *line, GPSData_t *data) {
-    char temp_speed[10];
-    char temp_course[10];
+  char temp_speed[10];
+  char temp_course[10];
 
-    // Initialize temporary storage to empty strings
-    memset(temp_speed, 0, sizeof(temp_speed));
-    memset(temp_course, 0, sizeof(temp_course));
+  // Initialize temporary storage to empty strings
+  memset(temp_speed, 0, sizeof(temp_speed));
+  memset(temp_course, 0, sizeof(temp_course));
 
-    // Parse the line
-    sscanf(line, "$GPRMC,%10[^,],%*c,%9[^,],%c,%10[^,],%c,%9[^,],%9[^,],%6[^,]",
-           data->time,
-           data->latitude, &data->lat_dir,
-           data->longitude, &data->lon_dir,
-           temp_speed, temp_course, data->date);
+  // Parse the line
+  sscanf(line, "$GPRMC,%10[^,],%*c,%9[^,],%c,%10[^,],%c,%9[^,],%9[^,],%6[^,]",
+         data->time, data->latitude, &data->lat_dir, data->longitude,
+         &data->lon_dir, temp_speed, temp_course, data->date);
 
-    // Convert speed and course only if valid values were read
-    if (strlen(temp_speed) > 0) {
-        data->speed = atof(temp_speed);
-    } else {
-        data->speed = 0.0f;
-    }
-    if (strlen(temp_course) > 0) {
-        data->course = atof(temp_course);
-    } else {
-        data->course = 0.0f;
-    }
+  // Convert speed and course only if valid values were read
+  if (strlen(temp_speed) > 0) {
+    data->speed = atof(temp_speed);
+  } else {
+    data->speed = 0.0f;
+  }
+  if (strlen(temp_course) > 0) {
+    data->course = atof(temp_course);
+  } else {
+    data->course = 0.0f;
+  }
 
-    // Handle empty fields by setting them to "null"
-    if (strlen(data->time) == 0) {
-        strncpy(data->time, "null", sizeof(data->time));
-    }
-    if (strlen(data->latitude) == 0) {
-        strncpy(data->latitude, "null", sizeof(data->latitude));
-    }
-    if (strlen(data->longitude) == 0) {
-        strncpy(data->longitude, "null", sizeof(data->longitude));
-    }
-    if (strlen(data->date) == 0) {
-        strncpy(data->date, "null", sizeof(data->date));
-    }
+  // Handle empty fields by setting them to "null"
+  if (strlen(data->time) == 0) {
+    strncpy(data->time, "null", sizeof(data->time));
+  }
+  if (strlen(data->latitude) == 0) {
+    strncpy(data->latitude, "null", sizeof(data->latitude));
+  }
+  if (strlen(data->longitude) == 0) {
+    strncpy(data->longitude, "null", sizeof(data->longitude));
+  }
+  if (strlen(data->date) == 0) {
+    strncpy(data->date, "null", sizeof(data->date));
+  }
 }
 
 void parseLine(const char *line, GPSData_t *data) {
-    if (strncmp(line, "$GPRMC", 6) == 0) {
-        parseGPRMC(line, data);
-    }
-    // Add more parsers for other NMEA sentence types if needed
+  if (strncmp(line, "$GPRMC", 6) == 0) {
+    parseGPRMC(line, data);
+  }
+  // Add more parsers for other NMEA sentence types if needed
 }
 
 void clearString(char *str, size_t size) {
@@ -104,56 +104,81 @@ void clearString(char *str, size_t size) {
 }
 
 void parseCSVToGPSData(const char *csv_string, GPSData_t *data) {
-  char buffer[256];
-  strncpy(buffer, csv_string, sizeof(buffer));
-  buffer[sizeof(buffer) - 1] = '\0';
+    char buffer[256];
+    strncpy(buffer, csv_string, sizeof(buffer));
+    buffer[sizeof(buffer) - 1] = '\0';
 
-  char *token;
-  int field_count = 0;
+    char *token;
+    int field_count = 0;
 
-  token = strtok(buffer, ",");
-  while (token != NULL) {
-    switch (field_count) {
-    case 0: // Time
-      strncpy(data->time, token, sizeof(data->time));
-      break;
-    case 1: // Latitude
-      strncpy(data->latitude, token, sizeof(data->latitude));
-      break;
-    case 2: // N/S Indicator
-      data->lat_dir = token[0];
-      break;
-    case 3: // Longitude
-      strncpy(data->longitude, token, sizeof(data->longitude));
-      break;
-    case 4: // E/W Indicator
-      data->lon_dir = token[0];
-      break;
-    case 5: // Date
-      strncpy(data->date, token, sizeof(data->date));
-      break;
-    case 6: // Speed
-      data->speed = atof(token);
-      break;
-    case 7: // Course
-      data->course = atof(token);
-      break;
+    token = strtok(buffer, ",");
+    while (token != NULL) {
+        switch (field_count) {
+            case 0: // Time
+                strncpy(data->time, token, sizeof(data->time));
+                break;
+            case 1: // Latitude
+                strncpy(data->latitude, token, sizeof(data->latitude));
+                break;
+            case 2: // N/S Indicator
+                data->lat_dir = token[0];
+                break;
+            case 3: // Longitude
+                strncpy(data->longitude, token, sizeof(data->longitude));
+                break;
+            case 4: // E/W Indicator
+                data->lon_dir = token[0];
+                break;
+            case 5: // Date
+                strncpy(data->date, token, sizeof(data->date));
+                break;
+            case 6: // Speed
+                data->speed = atof(token);
+                break;
+            case 7: // Course
+                data->course = atof(token);
+                break;
+            case 8: // Height
+                data->height = atof(token);
+                break;
+        }
+
+        token = strtok(NULL, ",");
+        field_count++;
     }
-
-    token = strtok(NULL, ",");
-    field_count++;
-  }
 }
 
-void GPSDataToJson(const GPSData_t *data, char *json_output,
-                   size_t json_output_size) {
-  snprintf(json_output, json_output_size,
-           "{ \"time\": \"%s\", \"latitude\": \"%s\", \"lat_dir\": \"%c\", "
-           "\"longitude\": \"%s\", \"lon_dir\": \"%c\", \"date\": \"%s\", "
-           "\"speed\": %.1f, \"course\": %.1f }",
-           data->time, data->latitude, data->lat_dir, data->longitude,
-           data->lon_dir, data->date, data->speed, data->course);
+// void GPSDataToJson(const GPSData_t *data, char *json_output,
+//                    size_t json_output_size) {
+//   gpioInitialise();
+//   gpioSetMode(GPIO_PIN, PI_INPUT);
+//   int state = gpioRead(GPIO_PIN);
+//   snprintf(json_output, json_output_size,
+//            "{ \"time\": \"%s\", \"latitude\": \"%s\", \"lat_dir\": \"%c\", "
+//            "\"longitude\": \"%s\", \"lon_dir\": \"%c\", \"date\": \"%s\", "
+//            "\"speed\": %.1f, \"course\": %.1f, \"thermal_state\": %d }",
+//            data->time, data->latitude, data->lat_dir, data->longitude,
+//            data->lon_dir, data->date, data->speed, data->course, state);
+// }
+
+void GPSDataToJson(const GPSData_t *data, char *json_output, size_t json_output_size) {
+  gpioInitialise();
+  gpioSetMode(GPIO_PIN, PI_INPUT);
+  int state = gpioRead(GPIO_PIN);
+    snprintf(json_output, json_output_size,
+             "{ \"time\": \"%s\", \"latitude\": \"%s\", \"lat_dir\": \"%c\", \"longitude\": \"%s\", \"lon_dir\": \"%c\", \"date\": \"%s\", \"speed\": %.1f, \"course\": %.1f, \"height\": %.1f, \"thermal_state\": %d }",
+             data->time,
+             data->latitude,
+             data->lat_dir,
+             data->longitude,
+             data->lon_dir,
+             data->date,
+             data->speed,
+             data->course,
+             data->height,
+             state);
 }
+
 
 int main() {
   int fd;
@@ -223,7 +248,8 @@ int main() {
       fprintf(file, "%s\n", jsonFile);
       fclose(file);
 
-      system("cat data.json > ../aviatech-hackathon-2/data.json");
+      system("cat data.json > "
+             "../aviatech-hackathon-2/src/renderer/src/assets/data.json");
 
       // char time[11];      // HHMMSS.SS
       // char latitude[10];  // DDMM.MMMM
