@@ -1,11 +1,9 @@
-#include <cjson/cJSON.h>
 #include <fcntl.h>
-#include <pigpio.h>
+#include <gpiod.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <termios.h>
 #include <unistd.h>
-#define GPIO_PIN 23
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,7 +20,7 @@ typedef struct {
   char lat_dir;         // N or S
   char longitude[11];   // DDDMM.MMMM
   char lon_dir;         // E or W
-  char timestamp[7];         // DDMMYY
+  char timestamp[7];    // DDMMYY
   float speed;          // Speed in knots
   float speed_vertical; // Speed in knots
   float course;         // Course over ground
@@ -52,47 +50,44 @@ bool parseSentence(const char *sentence, GPSData_t *gpsData) {
   sscanf(sentence, "%6s", type);
   if (strcmp(type, "$GPRMC") == 0) {
     sscanf(sentence,
-           // $GPRMC, 123519, A, 4807$	Every NMEA sentence starts with $ character.
-           // GPRMC	Global Positioning Recommended Minimum Coordinates
-           // 123519	Current time in UTC – 12:35:19
-           // A	Status A=active or V=Void.
-           // 4807.038,N	Latitude 48 deg 07.038′ N
-           // 01131.000,E	Longitude 11 deg 31.000′ E
-           // 022.4	Speed over the ground in knots
-           // 084.4	Track angle in degrees True
+           // $GPRMC, 123519, A, 4807$	Every NMEA sentence starts with $
+           // character. GPRMC	Global Positioning Recommended Minimum
+           // Coordinates 123519	Current time in UTC – 12:35:19 A
+           // Status A=active or V=Void. 4807.038,N	Latitude 48 deg 07.038′
+           // N 01131.000,E	Longitude 11 deg 31.000′ E 022.4	Speed
+           // over the ground in knots 084.4	Track angle in degrees True
            // 220318	Current Date – 22rd of March 2018
            // 003.1,W	Magnetic Variation
-           // *6A	The checksum data, always begins with *.038, N, 01131.000, E,022.4, 084.4, 230394, 003.1, W*6A
+           // *6A	The checksum data, always begins with *.038, N,
+           // 01131.000, E,022.4, 084.4, 230394, 003.1, W*6A
            "$GPRMC,%[^,],%[^,],%[^,],%[^,],%[^,],%[^,],%f,%[^,],%[^,],"
            "%[^*],%[^*]*%*s",
            gpsData->time, trash, gpsData->latitude, &gpsData->lat_dir,
-           gpsData->longitude, &gpsData->lon_dir, &gpsData->speed,
-           trash, gpsData->timestamp,trash,trash);
+           gpsData->longitude, &gpsData->lon_dir, &gpsData->speed, trash,
+           gpsData->timestamp, trash, trash);
   } else if (strcmp(type, "$GPGGA") == 0) {
     sscanf(
         sentence,
-      // $GPGGA, 123519, 4807.038, N, 01131.000, E, 1, 08, 0.9, 545.4, M, 46.9, M, , *47
-      // 123519	Current time in UTC – 12:35:19
-      // 4807.038,
-      // N	Latitude 48 deg 07.038′ N
-      // 01131.000,
-      // E	Longitude 11 deg 31.000′ E
-      // 1	GPS fix
-      // 08	Number of satellites being tracked
-      // 0.9	Horizontal dilution of position
-      // 545.4,
-      // M	Altitude in Meters (above mean sea level)
-      // 46.9,
-      // M	Height of geoid (mean sea level)
-      // (empty field)	Time in seconds since last DGPS update
-      // (empty field)	DGPS station ID number
-      // *47	The checksum data, always begins with *
+        // $GPGGA, 123519, 4807.038, N, 01131.000, E, 1, 08, 0.9, 545.4,
+        // M, 46.9, M, , *47 123519	Current time in UTC – 12:35:19 4807.038,
+        // N	Latitude 48 deg 07.038′ N
+        // 01131.000,
+        // E	Longitude 11 deg 31.000′ E
+        // 1	GPS fix
+        // 08	Number of satellites being tracked
+        // 0.9	Horizontal dilution of position
+        // 545.4,
+        // M	Altitude in Meters (above mean sea level)
+        // 46.9,
+        // M	Height of geoid (mean sea level)
+        // (empty field)	Time in seconds since last DGPS update
+        // (empty field)	DGPS station ID number
+        // *47	The checksum data, always begins with *
         "$GPGGA,%[^,],%[^,],%[^,],%[^,],%[^,],%[^,],%[^,],%[^,],%[^,],%lf*%*s",
         gpsData->time, gpsData->latitude, &gpsData->lat_dir, gpsData->longitude,
-        &gpsData->lon_dir, gpsData->timestamp, trash, trash, trash, &gpsData->altitude
-        );
-  }
-  else{
+        &gpsData->lon_dir, gpsData->timestamp, trash, trash, trash,
+        &gpsData->altitude);
+  } else {
     return true;
   }
   return false;
@@ -100,9 +95,7 @@ bool parseSentence(const char *sentence, GPSData_t *gpsData) {
 
 void GPSDataToJson(const GPSData_t *data, char *json_output,
                    size_t json_output_size) {
-  gpioInitialise();
-  gpioSetMode(GPIO_PIN, PI_INPUT);
-  int state = gpioRead(GPIO_PIN);
+  int state = 0;
   snprintf(json_output, json_output_size,
            "{ \"time\": \"%s\", \"latitude\": \"%s\", \"lat_dir\": \"%c\", "
            "\"longitude\": \"%s\", \"lon_dir\": \"%c\", \"date\": \"%s\", "
@@ -114,17 +107,42 @@ void GPSDataToJson(const GPSData_t *data, char *json_output,
 }
 
 int main() {
-  int fd;
-
   // union grabber
 
-  struct termios options;
+  const char *chipname = "gpiochip0"; // GPIO chip name
+  unsigned int line_num = 23;         // GPIO line number
+  struct gpiod_chip *chip;
+  struct gpiod_line *line;
+  int value;
 
+  // Open the GPIO chip
+  chip = gpiod_chip_open_by_name(chipname);
+  if (!chip) {
+    perror("Open chip failed");
+    exit(EXIT_FAILURE);
+  }
+
+  // Get the GPIO line
+  line = gpiod_chip_get_line(chip, line_num);
+  if (!line) {
+    perror("Get line failed");
+    gpiod_chip_close(chip);
+    exit(EXIT_FAILURE);
+  }
+
+  struct termios options;
+  int fd;
   // Open serial port
-  fd = open("/dev/ttyS0", O_RDWR | O_NOCTTY | O_NDELAY);
+  fd = open("/dev/ttyAMA0", O_RDONLY | O_NOCTTY);
   if (fd == -1) {
-    perror("open");
-    return -1;
+    perror("Unable to open /dev/ttyAMA0");
+    perror("Trying to open /dev/ttyS0");
+    fd = open("/dev/ttyS0", O_RDONLY | O_NOCTTY);
+
+    if (fd == -1) {
+      perror("Unable to open /dev/ttyS0");
+      exit(EXIT_FAILURE);
+    }
   }
 
   // Set serial port options
@@ -133,10 +151,6 @@ int main() {
   cfsetospeed(&options, B9600);
   options.c_cflag |= (CLOCAL | CREAD);
   tcsetattr(fd, TCSANOW, &options);
-
-  // parseNMEA(buffer, &dataCache.);
-
-  // printf("%s", print_json(&dataCache));
 
   char jsonFile[64096];
   char buffer[256];
@@ -152,7 +166,7 @@ int main() {
       printf("Received: %s\n", buffer);
       initializeGPSData(&GPSData);
 
-      if(parseSentence(buffer, &GPSData) == true){
+      if (parseSentence(buffer, &GPSData) == true) {
         continue;
       }
       GPSDataToJson(&GPSData, jsonFile, sizeof(jsonFile));

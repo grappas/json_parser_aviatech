@@ -1,0 +1,3 @@
+[submodule "extern/nmea_parser"]
+	path = extern/nmea_parser
+	url = https://github.com/grappas/nmea_parser
