@@ -1,5 +1,4 @@
 #include <fcntl.h>
-#include <gpiod.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <termios.h>
@@ -9,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include "gpiod.h"
 
 double height_cache = 0;
 
