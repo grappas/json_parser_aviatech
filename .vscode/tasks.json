@@ -1,0 +1,15 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Kill existing gdbserver and start new gdbserver",
+            "type": "shell",
+            "command": "setsid ssh grappas@192.168.0.24 'gdbserver :9898 ~/json_parser_aviatech/json_parser_aviatech'",
+            "problemMatcher": [],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        }
+    ]
+}

@@ -1,7 +1,7 @@
 # CMakeLists.txt
 cmake_minimum_required(VERSION 3.10)
 set(PROJECT_NAME json_parser_aviatech)
-project(PROJECT_NAME C)
+project(${PROJECT_NAME} C)
 
 # Set C standard
 set(CMAKE_C_STANDARD 99)
@@ -25,8 +25,8 @@ add_subdirectory(extern/nmea_parser)
 include_directories(extern/nmea_parser)
 
 # Add the executable
-add_executable(PROJECT_NAME src/main.c)
+add_executable(${PROJECT_NAME} src/main.c)
 
 # Link libraries
-target_link_libraries(PROJECT_NAME ${GPIOD_LIBRARY} -l:libgpiod.a nmea_parser)
+target_link_libraries(${PROJECT_NAME} ${GPIOD_LIBRARY} nmea_parser)
 

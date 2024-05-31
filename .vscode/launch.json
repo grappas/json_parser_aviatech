@@ -1,0 +1,27 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "preLaunchTask": "Kill existing gdbserver and start new gdbserver",
+            "name": "Launch with gdbserver",
+            "type": "c",
+            "request": "launch",
+            "program": "${workspaceFolder}/json_parser_aviatech",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "miDebuggerServerAddress": "192.168.0.24:9898",
+            "miDebuggerPath": "/usr/bin/aarch64-linux-gnu-gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ]
+        }
+    ]
+}
