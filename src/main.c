@@ -82,7 +82,7 @@ int main() {
 
   navData_t data;
   nmeaBuffer_t buffer;
-  nmea_init(&data, "GP");
+  nmea_init(&data, "GP", "RMC");
 
   char jsonFile[64096];
 
@@ -92,21 +92,28 @@ int main() {
     clearString(jsonFile, sizeof(jsonFile));
     int bytes_read = read(fd, buffer.str, sizeof(buffer.str));
     if (bytes_read > 0) {
+      if (buffer.str[0] == '\n')
+        continue;
       buffer.str[sizeof(buffer.str) - 1] = '\0'; // Null terminate the string
+      printf("%s\n", buffer.str);
       nmea_parse(&buffer, &data);
-      GPSDataToJson(&data, jsonFile, sizeof(jsonFile));
-      printf("%s\n", jsonFile);
-      print_rmc(&data.rmc);
-      FILE *file = fopen("data.json", "w");
-      if (file == NULL) {
-        perror("Error opening file");
-        return 1;
-      }
-      fprintf(file, "%s\n", jsonFile);
-      fclose(file);
+      printf("Cycle: %d\n", data.cycle);
 
-      system("cat data.json > "
-             "../aviatech-hackathon-2/src/renderer/src/assets/data.json");
+      if (data.cycle == 6) {
+        GPSDataToJson(&data, jsonFile, sizeof(jsonFile));
+        printf("%s\n", jsonFile);
+        // print_gsv(&data.gsv);
+        FILE *file = fopen("data.json", "w");
+        if (file == NULL) {
+          perror("Error opening file");
+          return 1;
+        }
+        fprintf(file, "%s\n", jsonFile);
+        fclose(file);
+
+        system("cat data.json > "
+               "../aviatech-hackathon-2/src/renderer/src/assets/data.json");
+      }
     }
   }
 
