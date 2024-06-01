@@ -25,8 +25,9 @@ add_subdirectory(extern/nmea_parser)
 include_directories(extern/nmea_parser)
 
 # Add the executable
-add_executable(${PROJECT_NAME} src/main.c)
+add_executable(${PROJECT_NAME} src/main.c extern/nmea_parser/nmea_parser.c)
 
+target_compile_definitions(${PROJECT_NAME} PRIVATE NMEA_GSV=0 NMEA_GSA=0 NMEA_GLL=0 NMEA_VTG=0 NMEA_PRINT=0)
 # Link libraries
 target_link_libraries(${PROJECT_NAME} ${GPIOD_LIBRARY} nmea_parser)
 

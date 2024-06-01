@@ -9,6 +9,7 @@
 #include <string.h>
 #include <time.h>
 #include "gpiod.h"
+
 #include "../extern/nmea_parser/nmea_parser.h"
 
 double height_cache = 0;
@@ -37,13 +38,11 @@ void clearString(char *str, size_t size) {
 
 int main() {
   // union grabber
-
   const char *chipname = "gpiochip0"; // GPIO chip name
   unsigned int line_num = 23;         // GPIO line number
   struct gpiod_chip *chip;
   struct gpiod_line *line;
   int value;
-
   // Open the GPIO chip
   chip = gpiod_chip_open_by_name(chipname);
   if (!chip) {
@@ -85,7 +84,6 @@ int main() {
   nmea_init(&data, "GP", "RMC");
 
   char jsonFile[64096];
-
   // Read data
   while (1) {
     clearString(buffer.str, sizeof(buffer.str));
@@ -95,11 +93,9 @@ int main() {
       if (buffer.str[0] == '\n')
         continue;
       buffer.str[sizeof(buffer.str) - 1] = '\0'; // Null terminate the string
-      printf("%s\n", buffer.str);
       nmea_parse(&buffer, &data);
-      printf("Cycle: %d\n", data.cycle);
 
-      if (data.cycle == 6) {
+      if (data.cycle == NMEA_OBJECT_SUM) {
         GPSDataToJson(&data, jsonFile, sizeof(jsonFile));
         printf("%s\n", jsonFile);
         // print_gsv(&data.gsv);
