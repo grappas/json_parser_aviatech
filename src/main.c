@@ -17,12 +17,11 @@ void GPSDataToJson(const navData_t *data, char *json_output,
                    size_t json_output_size) {
   int state = 0;
   double speed_vertical = 0;
-  if (height_cache) {
-    height_cache = data->gga->alt;
+  if (height_cache && data->gga->alt) {
+    speed_vertical = data->gga->alt - height_cache;
   }
-  // it's refreshed every second, so meters per second
-  speed_vertical = data->gga->alt - height_cache;
   height_cache = data->gga->alt;
+  // it's refreshed every second, so meters per second
   snprintf(json_output, json_output_size,
            "{ \"time\": \"%d\", \"latitude\": \"%f\", \"lat_dir\": \"%c\", "
            "\"longitude\": \"%f\", \"lon_dir\": \"%c\", \"date\": \"%u\", "
@@ -83,21 +82,14 @@ int main() {
   options.c_cflag |= (CLOCAL | CREAD);
   tcsetattr(fd, TCSANOW, &options);
 
-  xxGSV_t gsv;
-  xxVTG_t vtg;
   xxGGA_t gga;
   xxRMC_t rmc;
-  xxGSA_t gsa;
-  xxGLL_t gll;
+  navData_t data;
 
-  navData_t data = {
-      .gsv = NULL,
-      .vtg = NULL,
-      .gga = &gga,
-      .rmc = &rmc,
-      .gsa = NULL,
-      .gll = NULL,
-  };
+  nmea_nullify(&data);
+
+  data.rmc = &rmc;
+  data.gga = &gga;
 
   nmeaBuffer_t buffer;
 
@@ -114,8 +106,8 @@ int main() {
         continue;
       buffer.str[sizeof(buffer.str) - 1] = '\0'; // Null terminate the string
       nmea_parse(&buffer, &data);
-
       if (data.cycle == data.cycles_max) {
+        // print_nav(&data);
         GPSDataToJson(&data, jsonFile, sizeof(jsonFile));
         printf("%s\n", jsonFile);
         FILE *file = fopen("data.json", "w");
