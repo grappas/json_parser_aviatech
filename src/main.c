@@ -8,23 +8,26 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
 
 #include "../extern/nmea_parser/nmea_parser.h"
 
 double height_cache = 0;
 
-time_t start, end;
-
 void GPSDataToJson(const navData_t *data, char *json_output,
                    size_t json_output_size) {
   int state = 0;
-  float speed_vertical = 0;
+  double speed_vertical = 0;
+  if (height_cache) {
+    height_cache = data->gga->alt;
+  }
+  // it's refreshed every second, so meters per second
+  speed_vertical = data->gga->alt - height_cache;
+  height_cache = data->gga->alt;
   snprintf(json_output, json_output_size,
            "{ \"time\": \"%d\", \"latitude\": \"%f\", \"lat_dir\": \"%c\", "
            "\"longitude\": \"%f\", \"lon_dir\": \"%c\", \"date\": \"%u\", "
            "\"speed\": %.1f, \"speed_vertical\": %.1f, \"course\": %.1f, "
-           "\"height\": %.1f, \"thermal_state\": %d }",
+           "\"altitude\": %.1f, \"thermal_state\": %d }",
            (unsigned int)data->rmc->time, data->rmc->lat, data->rmc->lat_dir,
            data->rmc->lon, data->rmc->lon_dir, data->rmc->date,
            data->rmc->speed, speed_vertical, data->rmc->course, data->gga->alt,
@@ -84,53 +87,53 @@ int main() {
   xxVTG_t vtg;
   xxGGA_t gga;
   xxRMC_t rmc;
+  xxGSA_t gsa;
+  xxGLL_t gll;
 
   navData_t data = {
-      .gsv = &gsv,
+      .gsv = NULL,
       .vtg = NULL,
       .gga = &gga,
       .rmc = &rmc,
       .gsa = NULL,
       .gll = NULL,
-};
+  };
 
-nmeaBuffer_t buffer;
+  nmeaBuffer_t buffer;
 
-nmea_init(&data, "GP", "RMC");
+  nmea_init(&data, "GP", "RMC");
 
-char jsonFile[64096];
-// Read data
-while (1) {
-  clearString(buffer.str, sizeof(buffer.str));
-  clearString(jsonFile, sizeof(jsonFile));
-  int bytes_read = read(fd, buffer.str, sizeof(buffer.str));
-  if (bytes_read > 0) {
-    if (buffer.str[0] == '\n')
-      continue;
-    buffer.str[sizeof(buffer.str) - 1] = '\0'; // Null terminate the string
-    nmea_parse(&buffer, &data);
+  char jsonFile[64096];
+  // Read data
+  while (1) {
+    clearString(buffer.str, sizeof(buffer.str));
+    clearString(jsonFile, sizeof(jsonFile));
+    int bytes_read = read(fd, buffer.str, sizeof(buffer.str));
+    if (bytes_read > 0) {
+      if (buffer.str[0] == '\n')
+        continue;
+      buffer.str[sizeof(buffer.str) - 1] = '\0'; // Null terminate the string
+      nmea_parse(&buffer, &data);
 
-    if (data.cycle == data.cycles_max) {
-      GPSDataToJson(&data, jsonFile, sizeof(jsonFile));
-      printf("%s\n", jsonFile);
-      print_gsv(&*data.gsv);
-      // print_gsv(&data.gsv);
-      FILE *file = fopen("data.json", "w");
-      if (file == NULL) {
-        perror("Error opening file");
-        return 1;
+      if (data.cycle == data.cycles_max) {
+        GPSDataToJson(&data, jsonFile, sizeof(jsonFile));
+        printf("%s\n", jsonFile);
+        FILE *file = fopen("data.json", "w");
+        if (file == NULL) {
+          perror("Error opening file");
+          return 1;
+        }
+        fprintf(file, "%s\n", jsonFile);
+        fclose(file);
+
+        system("cat data.json > "
+               "../aviatech-hackathon-2/src/renderer/src/assets/data.json");
       }
-      fprintf(file, "%s\n", jsonFile);
-      fclose(file);
-
-      system("cat data.json > "
-             "../aviatech-hackathon-2/src/renderer/src/assets/data.json");
     }
   }
-}
 
-// Close serial port
-close(fd);
+  // Close serial port
+  close(fd);
 
-return 0;
+  return 0;
 }
